@@ -1,6 +1,9 @@
 {
   "name": "shared-claude-skills",
   "description": "A collection of Claude Code plugins for security and development workflows.",
+  "owner": {
+    "name": "genkist"
+  },
   "plugins": [
     {
       "name": "vuln-hunter",
