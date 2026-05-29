@@ -35,29 +35,33 @@ RECON → HUNT (12 agents, parallel) → VALIDATE → TRACE → REPORT
 
 ## Installation
 
-### Install a single plugin
-
-```bash
-claude plugins install https://github.com/genkist/shared-claude-skills/tree/main/vuln-hunter
-```
-
-### Install all plugins
-
-Clone and install each plugin directory:
+Clone the repository, then load the plugin with `--plugin-dir`:
 
 ```bash
 git clone https://github.com/genkist/shared-claude-skills.git
-cd shared-claude-skills
-claude plugins install ./vuln-hunter
 ```
 
-### Verify installation
+**Start Claude Code with a specific plugin:**
 
 ```bash
-claude plugins list
+claude --plugin-dir ./shared-claude-skills/vuln-hunter
 ```
 
-The installed skill becomes available as a slash command in any Claude Code session.
+**Or add to your project's plugin config** (`.claude/settings.json`):
+
+```json
+{
+  "pluginDirs": ["/absolute/path/to/shared-claude-skills/vuln-hunter"]
+}
+```
+
+The skill becomes available as a slash command once the plugin is loaded.
+
+**Keep skills up to date:**
+
+```bash
+cd shared-claude-skills && git pull
+```
 
 ## Contributing
 
