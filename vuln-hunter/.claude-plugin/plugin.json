@@ -1,0 +1,8 @@
+{
+  "name": "vuln-hunter",
+  "version": "0.1.0",
+  "description": "Multi-stage security scanner for AI-generated code, inspired by Cloudflare's Project Glasswing. Uses parallel specialized agents to find real, exploitable vulnerabilities.",
+  "author": {
+    "name": "genkist"
+  }
+}
