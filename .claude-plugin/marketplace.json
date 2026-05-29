@@ -1,0 +1,10 @@
+{
+  "name": "shared-claude-skills",
+  "description": "A collection of Claude Code plugins for security and development workflows.",
+  "plugins": [
+    {
+      "name": "vuln-hunter",
+      "path": "vuln-hunter"
+    }
+  ]
+}
