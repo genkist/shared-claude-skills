@@ -131,6 +131,7 @@ Code and config under review:
 12. **Business Logic** — bypassing workflows, negative amounts, replay attacks, integer overflow
 
 *Infrastructure-specific classes:*
+
 13. **IAM & Privilege** — overly permissive IAM policies (`*` actions/resources), missing least-privilege in Terraform roles, K8s `cluster-admin` bindings, containers running as root without necessity
 14. **Container Security** — `privileged: true`, dangerous capabilities (`SYS_ADMIN`, `NET_ADMIN`), `hostNetwork`/`hostPID`/`hostIPC`, writable root filesystem, no resource limits/requests, `latest` image tags
 15. **Network Exposure** — security groups with `0.0.0.0/0` ingress on sensitive ports, publicly accessible S3 buckets (`acl = "public-read"`), K8s Services of type `NodePort`/`LoadBalancer` without IP restrictions, open database ports exposed to internet
