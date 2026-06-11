@@ -6,29 +6,30 @@ A collection of Claude Code plugins (skills) for security and development workfl
 
 ### [vuln-hunter](./vuln-hunter)
 
-Multi-stage security scanner for AI-generated code, inspired by [Cloudflare's Project Glasswing](https://blog.cloudflare.com/project-glasswing/).
+Multi-stage security scanner for application code and infrastructure configurations, inspired by [Cloudflare's Project Glasswing](https://blog.cloudflare.com/project-glasswing/).
 
 Instead of a single generic scan, parallel specialized agents each hunt one vulnerability class, then a validation pass eliminates noise.
 
 **Pipeline:**
 
 ```
-RECON → HUNT (12 agents, parallel) → VALIDATE → TRACE → REPORT
+RECON → HUNT (15 agents, parallel) → VALIDATE → TRACE → REPORT
 ```
 
 | Phase | What it does |
 |-------|-------------|
-| **RECON** | Maps entry points, trust boundaries, and data flows |
-| **HUNT** | 12 agents run simultaneously, each targeting one vulnerability class |
+| **RECON** | Maps entry points, trust boundaries, data flows, and infra topology |
+| **HUNT** | 15 agents run simultaneously, each targeting one vulnerability class |
 | **VALIDATE** | Eliminates false positives, deduplicates, normalizes severity |
-| **TRACE** | Verifies external reachability for Critical/High findings |
+| **TRACE** | Verifies reachability (code) or effective impact (infra) for Critical/High findings |
 
-**Vulnerability classes covered:** Injection · Auth & Session · Secrets Exposure · Access Control · Crypto Failures · Input Validation · SSRF & Redirects · Supply Chain · Concurrency · Security Misconfiguration · AI-Specific Patterns · Business Logic
+**Vulnerability classes covered:** Injection · Auth & Session · Secrets Exposure · Access Control · Crypto Failures · Input Validation · SSRF & Redirects · Supply Chain · Concurrency · Security Misconfiguration · AI-Specific Patterns · Business Logic · IAM & Privilege · Container Security · Network Exposure
 
 **Usage:**
 
 ```
-/vuln-hunter               # scan git diff (staged + unstaged)
+/vuln-hunter               # full scan of current directory (code + infra)
+/vuln-hunter diff          # scan git diff (staged + unstaged)
 /vuln-hunter staged        # scan staged changes only
 /vuln-hunter path/to/file  # scan a specific file or directory
 ```
