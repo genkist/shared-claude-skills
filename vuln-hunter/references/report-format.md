@@ -65,15 +65,57 @@ Additional guidance if needed (link to docs, library recommendation).
 **Fix**: [One sentence or code snippet]
 ```
 
+## Infra Finding Format (Full — Critical/High)
+
+```markdown
+### [SEVERITY] [Vulnerability Class] — [Short descriptive title]
+
+**Confidence**: High / Medium / Low
+**Resource**: `resource_type.resource_name` (`file.tf:LINE`) / `namespace/kind/name` (`manifest.yaml:LINE`) / service `name` (`docker-compose.yml:LINE`)
+**CWE**: CWE-XXX ([name])
+**Effective**: Yes — [attached to / affects X] / Partially mitigated by [Y] / Theoretical — [not yet provisioned / template only]
+
+**Description**
+2–4 sentences explaining the misconfiguration: what the setting does, why it is dangerous, and what an attacker can achieve.
+
+**Blast radius**
+What resources, data, or systems are exposed or compromised if this is exploited.
+
+**Attack scenario**
+Concise narrative of how an attacker would exploit this (no need for a curl command — describe the steps).
+
+**Vulnerable config**
+\`\`\`hcl / yaml / nginx
+[minimal snippet showing the misconfiguration]
+\`\`\`
+
+**Remediation**
+\`\`\`hcl / yaml / nginx
+[corrected config snippet]
+\`\`\`
+Additional guidance if needed (policy reference, CIS Benchmark control).
+```
+
+## Infra Finding Format (Abbreviated — Medium/Low)
+
+```markdown
+### [SEVERITY] [Class] — [Title]
+**Resource**: `resource.name` (`file:LINE`)
+**Description**: [One sentence]
+**Fix**: [One-line config change or pointer to remediation]
+```
+
 ## Report Header
 
 ```markdown
-## AI Code Security Scan Report
+## Security Scan Report
 
-**Scan target**: [git diff / file path / directory]  
-**Language / Framework**: [detected]  
-**Scan date**: [date]  
+**Scan target**: [full scan / git diff / file path / directory]
+**Language / Framework**: [detected]
+**Infrastructure detected**: [Terraform · Kubernetes · Docker · nginx] or "none"
+**Scan date**: [date]
 **Total findings**: N (Critical: X · High: Y · Medium: Z · Low: W)
+  Code findings: N · Infra findings: N
 
 > AI-generation signals detected: [yes/no — describe if yes]
 ```

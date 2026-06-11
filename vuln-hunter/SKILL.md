@@ -1,7 +1,7 @@
 ---
 name: vuln-hunter
-description: This skill should be used when the user asks to "security scan AI-written code", "check AI code for vulnerabilities", "security review this code", "scan for security issues", "run a security audit on AI code", "find vulnerabilities in this diff", or wants to perform a multi-stage security analysis. Implements a Cloudflare Glasswing-inspired parallel agent pipeline (Recon → Hunt → Validate → Trace) to surface real, exploitable vulnerabilities rather than theoretical warnings.
-version: 0.1.0
+description: Use when the user asks to "security scan code", "check for vulnerabilities", "security review this code", "scan for security issues", "run a security audit", "find vulnerabilities in this diff", "scan infra config", "check Terraform/Kubernetes/Docker for misconfigurations", wants a multi-stage security analysis, or uses Japanese phrases like "セキュリティチェック", "脆弱性診断", "セキュリティスキャン", "インフラの設定不備をチェック", "フルスキャン". Implements a Cloudflare Glasswing-inspired parallel agent pipeline (Recon → Hunt → Validate → Trace) to surface real, exploitable vulnerabilities rather than theoretical warnings. Covers both application code and infrastructure configurations (Terraform, Kubernetes, Docker, web server configs).
+version: 0.2.0
 user-invocable: true
 allowed-tools:
   - Read
@@ -10,9 +10,9 @@ allowed-tools:
   - Glob
 ---
 
-# AI Code Security Scan
+# Security Scan — Code & Infrastructure
 
-Multi-stage security scanner for AI-generated code. Inspired by Cloudflare's Project Glasswing / Mythos Preview research: instead of one generic scan, parallel specialized agents each hunt a single vulnerability class, then a validation pass eliminates noise.
+Multi-stage security scanner for application code and infrastructure configurations. Inspired by Cloudflare's Project Glasswing / Mythos Preview research: instead of one generic scan, parallel specialized agents each hunt a single vulnerability class, then a validation pass eliminates noise.
 
 Arguments passed: `$ARGUMENTS`
 
@@ -26,14 +26,19 @@ AI-generated code has characteristic failure modes that differ from hand-written
 - Hallucinated API usage that accidentally bypasses security controls
 - Missing context-specific requirements (rate limits, auth checks) when code is generated in isolation
 
+Infrastructure configuration also introduces its own risks:
+- Overly permissive IAM roles and RBAC policies
+- Publicly exposed cloud resources and open network rules
+- Privileged containers and insecure runtime settings
+
 The pipeline runs four phases:
 
 | Phase | What happens | Goal |
 |-------|-------------|------|
-| **RECON** | Map attack surface, entry points, trust boundaries | Give every Hunt agent shared context |
-| **HUNT** | 12 agents run in parallel, each targeting one vulnerability class | Broad coverage, no single agent drifts |
+| **RECON** | Map attack surface, entry points, trust boundaries, infra topology | Give every Hunt agent shared context |
+| **HUNT** | 15 agents run in parallel, each targeting one vulnerability class | Broad coverage across code and infra |
 | **VALIDATE** | One agent attempts to disprove each finding | Cut false positives before reporting |
-| **TRACE** | For Critical/High: verify external reachability | Separate exploitable from theoretical |
+| **TRACE** | For Critical/High: verify reachability (code) or effective impact (infra) | Separate exploitable from theoretical |
 
 ---
 
@@ -42,26 +47,47 @@ The pipeline runs four phases:
 Before spawning Hunt agents, build a concise **Attack Surface Map** by:
 
 1. Determining the scan target from `$ARGUMENTS`:
-   - No args or `diff` → `git diff HEAD` (staged + unstaged changes)
+   - No args → **Full scan**: list all files in the current directory recursively; generate an outline (see below)
+   - `diff` → `git diff HEAD` (staged + unstaged changes)
    - `staged` → `git diff --cached`
    - A file path → read that file
-   - A directory path → list files recursively, read key files
-2. Identifying language(s), framework(s), and runtime
-3. Locating:
+   - A directory path → list files recursively, generate an outline for that directory
+
+2. **Full scan outline generation** (when target is a directory or no args):
+   - List every file with path
+   - For each **code file**: extract function/method signatures and HTTP route definitions (use `grep` patterns appropriate to the language — e.g., `def `, `func `, `@app.route`, `router.get`, `export function`)
+   - For each **infra file**: extract resource names and types (e.g., `resource "aws_*"`, `kind:`, `image:`, `server_name`)
+   - Pass this outline to all Hunt agents so they can request specific files to read in depth
+
+3. Identifying language(s), framework(s), and runtime
+
+4. Detecting infrastructure files present in the scan target:
+   - **Terraform**: `*.tf`, `*.tfvars`
+   - **Kubernetes**: `*.yaml` / `*.yml` files containing `apiVersion:` or `kind:`
+   - **Docker**: `Dockerfile`, `docker-compose.yml`, `docker-compose.*.yml`
+   - **Web server**: `nginx.conf`, `*.conf` under nginx/apache directories, `.htaccess`
+
+5. Locating (for code):
    - **Entry points**: HTTP handlers, CLI args, message queue consumers, file parsers
    - **Trust boundaries**: where external data enters the system
    - **Sensitive operations**: DB queries, shell calls, file I/O, crypto, auth checks, external HTTP calls
    - **Data flows**: how external input travels to sensitive operations
-4. Noting any AI generation signals (e.g., `# Generated by`, boilerplate patterns, model-typical phrasing)
 
-Output of RECON: a compact summary (≤300 words) used as shared context for all Hunt agents.
+6. Locating (for infra):
+   - **Cloud resources**: IAM roles/policies, security groups, S3 buckets, databases, compute instances
+   - **Network rules**: ingress/egress CIDRs, open ports, load balancer configs
+   - **Container configs**: image tags, privilege settings, mounted volumes, environment variables
+
+7. Noting any AI generation signals (e.g., `# Generated by`, boilerplate patterns, model-typical phrasing)
+
+Output of RECON: a compact summary (≤400 words) used as shared context for all Hunt agents. Include a flag indicating whether infra files were detected.
 
 ---
 
 ## Phase 2: HUNT (Parallel)
 
-Spawn **all 12 Hunt agents simultaneously** using the Agent tool. Each receives:
-- The full code under review
+Spawn **all 15 Hunt agents simultaneously** using the Agent tool. Each receives:
+- The full code/config under review (or the outline + ability to read specific files for large codebases)
 - The RECON Attack Surface Map
 - Its specific vulnerability class (defined in `references/vulnerability-classes.md`)
 
@@ -69,64 +95,72 @@ Spawn **all 12 Hunt agents simultaneously** using the Agent tool. Each receives:
 
 ```
 You are a security researcher specializing in [CLASS] vulnerabilities.
-Review the following code. You have this attack surface context: [RECON MAP]
+Review the following code and configuration files. You have this attack surface context: [RECON MAP]
 
 Your task:
-1. Find every instance of [CLASS] vulnerabilities in the code
+1. Find every instance of [CLASS] vulnerabilities in the code and infrastructure configs
 2. For each finding, output:
-   - file:line (or code snippet if no file context)
+   - file:line (or resource name/config key if infra)
    - Vulnerability type
    - Brief description of the flaw
-   - Why AI-generated code is specifically prone to this
+   - Whether this is a code finding or an infra finding
    - Tentative severity: Critical / High / Medium / Low
 3. If you find nothing, say "NO FINDINGS" — do not invent issues
-4. Do NOT explain general best practices; only report actual findings in this code
+4. Do NOT explain general best practices; only report actual findings in this code/config
 
 Focus areas for [CLASS]: [FOCUS]
 
-Code under review:
-[CODE]
+Code and config under review:
+[CODE/CONFIG]
 ```
 
-**The 12 Hunt classes** (spawn all in parallel):
+**The 15 Hunt classes** (spawn all in parallel):
 
+*Code-focused classes:*
 1. **Injection** — SQL, NoSQL, command, LDAP, template, XPath injection
 2. **Auth & Session** — broken auth, session fixation, JWT issues, insecure cookie flags
-3. **Secrets Exposure** — hardcoded credentials, API keys, private keys in code or logs
-4. **Access Control** — missing authorization checks, privilege escalation, IDOR, mass assignment
+3. **Secrets Exposure** — hardcoded credentials/API keys in code, logs, K8s Secrets, env vars in manifests *(code + infra)*
+4. **Access Control** — missing authorization checks, IDOR, mass assignment; K8s RBAC wildcard permissions *(code + infra)*
 5. **Crypto Failures** — weak algorithms, ECB mode, hardcoded IVs/keys, improper entropy
 6. **Input Validation** — path traversal, XSS, deserialization, prototype pollution, ReDoS
 7. **SSRF & Redirects** — server-side request forgery, open redirects, URL parsing confusion
 8. **Supply Chain** — eval of external content, dynamic requires, insecure package patterns
 9. **Concurrency** — race conditions, TOCTOU, non-atomic check-then-act, shared mutable state
-10. **Security Misconfiguration** — debug modes left on, permissive CORS, missing security headers, default creds
-11. **AI-Specific Patterns** — prompt injection in LLM-calling code, unvalidated model outputs used in sensitive ops, insecure tool use
-12. **Business Logic** — bypassing workflows, negative amounts, replay attacks, integer overflow in business-critical paths
+10. **Security Misconfiguration** — debug modes, permissive CORS, missing security headers; nginx/apache misconfigs *(code + infra)*
+11. **AI-Specific Patterns** — prompt injection in LLM-calling code, unvalidated model outputs, insecure tool use
+12. **Business Logic** — bypassing workflows, negative amounts, replay attacks, integer overflow
 
-Collect all 12 agent responses before proceeding to VALIDATE.
+*Infrastructure-specific classes:*
+13. **IAM & Privilege** — overly permissive IAM policies (`*` actions/resources), missing least-privilege in Terraform roles, K8s `cluster-admin` bindings, containers running as root without necessity
+14. **Container Security** — `privileged: true`, dangerous capabilities (`SYS_ADMIN`, `NET_ADMIN`), `hostNetwork`/`hostPID`/`hostIPC`, writable root filesystem, no resource limits/requests, `latest` image tags
+15. **Network Exposure** — security groups with `0.0.0.0/0` ingress on sensitive ports, publicly accessible S3 buckets (`acl = "public-read"`), K8s Services of type `NodePort`/`LoadBalancer` without IP restrictions, open database ports exposed to internet
+
+Collect all 15 agent responses before proceeding to VALIDATE.
 
 ---
 
 ## Phase 3: VALIDATE
 
-Spawn a single **Validate agent** with all Hunt findings plus the original code.
+Spawn a single **Validate agent** with all Hunt findings plus the original code and configs.
 
 Validate agent instructions:
-- For each finding: re-read the relevant code and determine if the finding is **Confirmed**, **Unlikely** (possible but needs attacker-controlled preconditions that aren't present), or **False Positive**
+- For each finding: re-read the relevant code/config and determine if the finding is **Confirmed**, **Unlikely** (possible but needs attacker-controlled preconditions that aren't present), or **False Positive**
 - Deduplicate: merge findings from different Hunt agents that describe the same root cause
+- Tag each confirmed finding as either `type: code` or `type: infra`
 - Apply consistent severity using CVSS principles:
   - **Critical**: Unauthenticated RCE, auth bypass, data exfiltration with no preconditions
   - **High**: Requires minimal preconditions (e.g., valid account); significant impact
   - **Medium**: Requires specific conditions; moderate impact
   - **Low**: Defense-in-depth issues; low impact or very unlikely exploitation
-- Output: cleaned list of confirmed findings only
+- Output: cleaned list of confirmed findings, tagged by type
 
 ---
 
 ## Phase 4: TRACE (Critical & High only)
 
-For each Critical or High finding from VALIDATE, verify **external reachability**:
+For each Critical or High finding from VALIDATE:
 
+**Code findings** — verify external reachability:
 1. Start from the vulnerable code location
 2. Trace backwards: is there a call path from an external entry point (HTTP request, file upload, env var, CLI arg) to this code?
 3. Determine: can an unauthenticated or low-privilege attacker reach this code path?
@@ -135,19 +169,34 @@ For each Critical or High finding from VALIDATE, verify **external reachability*
    - Downgrade to Medium if not externally reachable (internal only)
    - Mark as "Theoretical" if requires physical access or highly privileged position
 
+**Infra findings** — verify effective impact:
+1. Check if the misconfiguration is actually deployed/active (e.g., is the permissive security group attached to any resource? Is the public S3 bucket actually hosting sensitive data?)
+2. Check if other controls compensate (e.g., a `0.0.0.0/0` security group rule on port 22 may be mitigated by a separate NACL or VPN requirement defined elsewhere in the same Terraform module)
+3. Assess blast radius: what resources or data are exposed if exploited?
+4. Update severity:
+   - Downgrade if a compensating control is found in the same codebase
+   - Upgrade if blast radius is larger than initially assessed (e.g., open port leads to a database with no encryption at rest)
+   - Mark as "Theoretical" if the resource is not yet provisioned or the config is clearly a non-production template
+
 ---
 
 ## Phase 5: REPORT
 
-Output a structured security report:
+Output a structured security report with **two separate sections** — one for code findings, one for infra findings:
 
 ```
-## AI Code Security Scan Report
+## Security Scan Report
 Scan target: [target description]
-Language/Framework: [detected stack]
-Total findings: [N] (Critical: X, High: Y, Medium: Z, Low: W)
+Language / Framework: [detected stack]
+Infrastructure: [detected infra types, or "none detected"]
+Scan date: [date]
+Total findings: [N] (Critical: X · High: Y · Medium: Z · Low: W)
+  ↳ Code: [N code findings]
+  ↳ Infra: [N infra findings]
 
 ---
+
+# Code Findings
 
 ### CRITICAL
 
@@ -160,37 +209,47 @@ Total findings: [N] (Critical: X, High: Y, Medium: Z, Low: W)
   [Minimal exploit sketch or curl/payload showing the issue]
 **Remediation**: [Specific fix with code example if possible]
 
+### HIGH / MEDIUM / LOW
+[same format for High; abbreviated (title + file + one-line + fix) for Medium/Low]
+
 ---
 
-### HIGH
-[same format]
+# Infrastructure Findings
 
-### MEDIUM
-[same format]
+### CRITICAL
 
-### LOW
-[abbreviated format — title, file, one-line description, fix pointer]
+#### [Class] — [Short title]
+**Resource**: resource_type.resource_name (file.tf:42) / namespace/kind/name (manifest.yaml:10) / service container (docker-compose.yml:15)
+**Effective**: [Yes — attached to X / Partially mitigated by Y / Theoretical — not yet provisioned]
+**Description**: [What the misconfiguration is and what an attacker can do]
+**Blast radius**: [What is exposed if exploited]
+**Attack scenario**: [Concise description of how an attacker exploits this]
+**Remediation**: [Specific config fix with before/after snippet]
+
+### HIGH / MEDIUM / LOW
+[same format for High; abbreviated for Medium/Low]
 
 ---
 
 ## False Positives Discarded
-[Brief list of what was ruled out and why — gives transparency]
+[Brief list of what was ruled out and why]
 
 ## Coverage Gaps
-[Any areas that couldn't be fully analyzed — encrypted config, minified code, etc.]
+[Any areas that couldn't be fully analyzed]
 ```
 
 ---
 
 ## Execution notes
 
-- If the codebase is large (>2000 lines), focus RECON on the diff or changed files, and run Hunt agents only on changed code plus one hop of caller/callee context.
-- If `git` is not available, ask the user to specify which files to review.
+- For full scans of large codebases, use the RECON outline (file list + function signatures + resource names) to guide Hunt agents. Hunt agents should read specific files in depth based on the outline rather than trying to load everything at once.
+- If `git` is not available and `diff` mode is requested, ask the user to specify which files to review.
 - Do not report findings with less than 40% confidence — noise defeats the purpose.
 - If a Hunt agent returns ambiguous findings ("this *might* be"), count them as candidates for VALIDATE, not confirmed findings.
+- If no infra files are detected, skip infra Hunt classes (13–15) and omit the Infrastructure Findings section from the report.
 - The goal is **5 high-confidence real findings** over **50 speculative warnings**.
 
 ## Additional Resources
 
-- **`references/vulnerability-classes.md`** — Detailed focus areas and AI-specific patterns for each Hunt class
-- **`references/report-format.md`** — Extended report format with CVSS scoring guidance
+- **`references/vulnerability-classes.md`** — Detailed focus areas for each Hunt class including infra-specific classes
+- **`references/report-format.md`** — Extended report format with CVSS scoring guidance and infra finding format
